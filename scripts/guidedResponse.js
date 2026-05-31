@@ -1,13 +1,7 @@
 /**
  * @file Contains the logic for the Guided Response button.
  */
-import { getContext, extension_settings, isGroupChat, setPreviousImpersonateInput, getPreviousImpersonateInput, debugLog } from './persistentGuides/guideExports.js'; // Import from central hub
-
-// Import the guide scripts for direct execution
-import thinkingGuide from './persistentGuides/thinkingGuide.js'; // Correct relative path
-import stateGuide from './persistentGuides/stateGuide.js'; // Correct relative path
-import clothesGuide from './persistentGuides/clothesGuide.js'; // Correct relative path
-import customAutoGuide from './persistentGuides/customAutoGuide.js'; // Import the new Custom Auto Guide
+import { getContext, extension_settings, isGroupChat, setPreviousImpersonateInput, getPreviousImpersonateInput, debugLog } from './persistentGuides/guideExports.js';
 
 const extensionName = "GuidedGenerations-Extension";
 
