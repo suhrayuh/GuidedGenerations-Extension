@@ -7,6 +7,7 @@ A streamlined fork of [Samueras/GuidedGenerations-Extension](https://github.com/
 ## Table of Contents
 - [Features](#features)
 - [Floating Drawer](#floating-drawer)
+- [Custom Guided Prompts](#custom-guided-prompts)
 - [Installation](#installation)
 - [Settings](#settings)
 - [License](#license)
@@ -54,6 +55,24 @@ When enabled in settings, the GG and QR buttons move out of the input box into a
 
 ---
 
+## Custom Guided Prompts
+
+Create your own action buttons with custom prompts, icons, and behavior. Each prompt can be one of four types:
+
+- **Impersonate** — Runs `/impersonate` with your custom template. Supports per-prompt connection profiles and presets.
+- **Guided Response** — Injects your template before the AI's next response (like the built-in Guided Response button).
+- **Guided Swipe** — Injects your template and generates a new swipe (like the built-in Guided Swipe button).
+- **Guided Continue** — Runs `/continue` with your custom template (like the built-in Guided Continue button).
+
+Each custom prompt gets its own little button in the drawer/input box with a configurable FontAwesome icon. Prompts can be enabled/disabled individually.
+
+**Use cases:**
+- Multiple impersonation templates without repurposing the built-in 1st/2nd/3rd person buttons
+- Pre-configured guided responses with baked-in instructions instead of relying on `{{input}}`
+- Scene-specific continue prompts
+
+---
+
 ## Installation
 
 1. In SillyTavern's Extension Manager, click **Install Extension**
@@ -96,6 +115,12 @@ Choose a SillyTavern preset per action. Before running, the extension switches t
 - **Accent, Border, Glow Colors** — Native color pickers for theming
 - **Background Gradient** — CSS gradient for the drawer panel and toggle
 - **Custom CSS Overrides** — Raw CSS for advanced customization
+
+### Custom Guided Prompts
+- **Add Custom Prompt** — Create a new custom prompt button
+- Each prompt has: name, icon (FontAwesome class), type, prompt template, depth, role
+- Impersonate prompts also have connection profile and preset overrides
+- Prompts can be enabled/disabled individually via toggle
 
 ### Debug Mode
 Enable detailed debug logging in the browser console.

@@ -13,6 +13,7 @@ import { getPresetManager } from '../../../../scripts/preset-manager.js';
 import { loadSettingsPanel } from './scripts/settingsPanel.js';
 import { getProfileList } from './scripts/persistentGuides/guideExports.js';
 import { initDrawer, teardownDrawer, isDrawerActive, applyDrawerTheme } from './scripts/ui/drawer.js';
+import { addCustomPrompt, updateCustomPrompt, deleteCustomPrompt, executeCustomPrompt, renderCustomPromptButtons } from './scripts/customPrompts.js';
 
 export const extensionName = 'GuidedGenerations-Extension';
 
@@ -152,6 +153,7 @@ export const defaultSettings = {
     drawerPositionRight: 18,
     drawerCssOverrides: '',
     drawerResetCommand: true,
+    customPrompts: [],
     LastPatchNoteVersion: '2.0.0',
 };
 
@@ -265,7 +267,217 @@ const addSettingsEventListeners = () => {
         settingsContainer.removeEventListener('change', handleSettingsChangeDelegated);
         settingsContainer.addEventListener('change', handleSettingsChangeDelegated);
     }
+
+    // Add Custom Prompt button
+    const addBtn = document.getElementById('gg_add_custom_prompt');
+    if (addBtn && !addBtn.dataset.bound) {
+        addBtn.dataset.bound = 'true';
+        addBtn.addEventListener('click', () => {
+            addCustomPrompt();
+            renderCustomPromptsList();
+            updateExtensionButtons();
+        });
+    }
+
+    renderCustomPromptsList();
 };
+
+// ─── Custom Prompts CRUD UI ─────────────────────────────────────
+
+function renderCustomPromptsList() {
+    const container = document.getElementById('gg_custom_prompts_list');
+    if (!container) return;
+
+    const prompts = extension_settings[extensionName]?.customPrompts ?? [];
+    container.innerHTML = '';
+
+    if (prompts.length === 0) {
+        container.innerHTML = '<small style="opacity: 0.6;">No custom prompts yet.</small>';
+        return;
+    }
+
+    for (const prompt of prompts) {
+        const card = document.createElement('div');
+        card.className = 'gg-custom-prompt-card';
+        card.style.cssText = 'border: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.3)); border-radius: 6px; padding: 8px; margin-bottom: 6px; background: var(--SmartThemeBodyBgColor, var(--SmartThemeBg));';
+
+        // Header row: icon + name + toggle + delete
+        const header = document.createElement('div');
+        header.style.cssText = 'display: flex; align-items: center; gap: 8px; cursor: pointer;';
+
+        const iconPreview = document.createElement('i');
+        iconPreview.className = prompt.icon || 'fa-solid fa-star';
+        iconPreview.style.cssText = 'width: 20px; text-align: center;';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = prompt.name || 'Untitled';
+        nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
+
+        const typeTag = document.createElement('small');
+        typeTag.textContent = prompt.type;
+        typeTag.style.cssText = 'opacity: 0.5; font-size: 0.8em;';
+
+        const toggle = document.createElement('input');
+        toggle.type = 'checkbox';
+        toggle.checked = prompt.enabled;
+        toggle.title = 'Enable/disable this prompt';
+        toggle.addEventListener('change', () => {
+            updateCustomPrompt(prompt.id, { enabled: toggle.checked });
+            updateExtensionButtons();
+        });
+
+        const deleteBtn = document.createElement('i');
+        deleteBtn.className = 'fa-solid fa-trash interactable';
+        deleteBtn.style.cssText = 'cursor: pointer; opacity: 0.6; color: var(--SmartThemeBodyColor);';
+        deleteBtn.title = 'Delete this prompt';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteCustomPrompt(prompt.id);
+            renderCustomPromptsList();
+            updateExtensionButtons();
+        });
+
+        header.append(iconPreview, nameSpan, typeTag, toggle, deleteBtn);
+
+        // Expandable details
+        const details = document.createElement('div');
+        details.style.cssText = 'display: none; margin-top: 8px;';
+
+        header.addEventListener('click', () => {
+            details.style.display = details.style.display === 'none' ? 'block' : 'none';
+        });
+
+        details.innerHTML = `
+            <div style="display: flex; gap: 6px; margin-bottom: 6px;">
+                <div style="flex: 1;">
+                    <small>Name</small>
+                    <input type="text" class="text_pole gg-cp-field" data-id="${prompt.id}" data-field="name" value="${prompt.name || ''}" style="width: 100%;">
+                </div>
+                <div style="width: 140px;">
+                    <small>Icon (FA class)</small>
+                    <input type="text" class="text_pole gg-cp-field" data-id="${prompt.id}" data-field="icon" value="${prompt.icon || ''}" style="width: 100%;" placeholder="fa-solid fa-star">
+                </div>
+            </div>
+            <div style="margin-bottom: 6px;">
+                <small>Type</small>
+                <select class="text_pole gg-cp-field gg-cp-type-select" data-id="${prompt.id}" data-field="type" style="width: 100%;">
+                    <option value="impersonate" ${prompt.type === 'impersonate' ? 'selected' : ''}>Impersonate</option>
+                    <option value="guided-response" ${prompt.type === 'guided-response' ? 'selected' : ''}>Guided Response</option>
+                    <option value="guided-swipe" ${prompt.type === 'guided-swipe' ? 'selected' : ''}>Guided Swipe</option>
+                    <option value="guided-continue" ${prompt.type === 'guided-continue' ? 'selected' : ''}>Guided Continue</option>
+                </select>
+            </div>
+            <div style="margin-bottom: 6px;">
+                <small>Prompt Template</small>
+                <textarea class="text_pole gg-cp-field" data-id="${prompt.id}" data-field="prompt" rows="3" style="width: 100%; font-family: monospace; font-size: 12px;">${prompt.prompt || ''}</textarea>
+            </div>
+            <div style="display: flex; gap: 6px; margin-bottom: 6px;">
+                <div style="width: 70px;">
+                    <small>Depth</small>
+                    <input type="number" class="text_pole gg-cp-field" data-id="${prompt.id}" data-field="depth" value="${prompt.depth ?? 0}" min="0" style="width: 100%;">
+                </div>
+                <div style="flex: 1;">
+                    <small>Role</small>
+                    <select class="text_pole gg-cp-field" data-id="${prompt.id}" data-field="role" style="width: 100%;">
+                        <option value="" ${!prompt.role ? 'selected' : ''}>Global default</option>
+                        <option value="system" ${prompt.role === 'system' ? 'selected' : ''}>system</option>
+                        <option value="user" ${prompt.role === 'user' ? 'selected' : ''}>user</option>
+                        <option value="assistant" ${prompt.role === 'assistant' ? 'selected' : ''}>assistant</option>
+                    </select>
+                </div>
+            </div>
+            <div class="gg-cp-profile-preset-row" style="display: ${prompt.type === 'impersonate' ? 'flex' : 'none'}; gap: 6px;">
+                <div style="flex: 1;">
+                    <small>Connection Profile</small>
+                    <select class="text_pole gg-cp-field gg-cp-profile" data-id="${prompt.id}" data-field="connectionProfile" style="width: 100%;">
+                        <option value="">Global default</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <small>Preset</small>
+                    <select class="text_pole gg-cp-field gg-cp-preset" data-id="${prompt.id}" data-field="preset" style="width: 100%;">
+                        <option value="">Global default</option>
+                    </select>
+                </div>
+            </div>
+        `;
+
+        // Type change: show/hide profile/preset row
+        const typeSelect = details.querySelector('.gg-cp-type-select');
+        const profilePresetRow = details.querySelector('.gg-cp-profile-preset-row');
+        if (typeSelect && profilePresetRow) {
+            typeSelect.addEventListener('change', () => {
+                profilePresetRow.style.display = typeSelect.value === 'impersonate' ? 'flex' : 'none';
+            });
+        }
+
+        // Bind change events on detail fields
+        details.addEventListener('change', (e) => {
+            const field = e.target.dataset?.field;
+            const id = e.target.dataset?.id;
+            if (!field || !id) return;
+
+            let value;
+            if (e.target.type === 'number') {
+                value = parseInt(e.target.value) || 0;
+            } else {
+                value = e.target.value.trim();
+            }
+
+            updateCustomPrompt(id, { [field]: value });
+
+            // Update header preview
+            if (field === 'name') nameSpan.textContent = value || 'Untitled';
+            if (field === 'icon') iconPreview.className = value || 'fa-solid fa-star';
+            if (field === 'type') typeTag.textContent = value;
+
+            updateExtensionButtons();
+        });
+
+        // Real-time icon preview on input
+        details.addEventListener('input', (e) => {
+            if (e.target.dataset?.field === 'icon') {
+                iconPreview.className = e.target.value.trim() || 'fa-solid fa-star';
+            }
+        });
+
+        card.append(header, details);
+        container.appendChild(card);
+
+        // Populate profile dropdown asynchronously
+        populateCustomPromptDropdowns(prompt.id, details);
+    }
+}
+
+async function populateCustomPromptDropdowns(promptId, detailsEl) {
+    try {
+        const profileSelect = detailsEl.querySelector('.gg-cp-profile');
+        const presetSelect = detailsEl.querySelector('.gg-cp-preset');
+
+        if (profileSelect) {
+            const { getProfileList } = await import('./scripts/persistentGuides/guideExports.js');
+            const profiles = await getProfileList();
+            if (Array.isArray(profiles)) {
+                for (const name of profiles) {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    profileSelect.appendChild(opt);
+                }
+            }
+            const current = extension_settings[extensionName]?.customPrompts?.find(p => p.id === promptId);
+            if (current?.connectionProfile) profileSelect.value = current.connectionProfile;
+        }
+
+        if (presetSelect) {
+            await populatePresetDropdown(presetSelect);
+            const current = extension_settings[extensionName]?.customPrompts?.find(p => p.id === promptId);
+            if (current?.preset) presetSelect.value = current.preset;
+        }
+    } catch (error) {
+        console.error(`[GuidedGenerations] Error populating custom prompt dropdowns:`, error);
+    }
+}
 
 const handleSettingsChangeDelegated = async (event) => {
     if (event.target.classList.contains('gg-setting-input')) {
@@ -605,6 +817,13 @@ function updateExtensionButtons() {
     }
 
     regularButtons.forEach(button => { actionButtonsContainer.appendChild(button); });
+
+    // Custom guided prompt buttons
+    const customButtons = renderCustomPromptButtons();
+    if (customButtons.childNodes.length > 0) {
+        actionButtonsContainer.appendChild(customButtons);
+    }
+
     integrateQRBar();
 
     // Drawer mode: move buttons into floating drawer, or restore to input box

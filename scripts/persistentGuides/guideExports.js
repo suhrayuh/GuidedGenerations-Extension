@@ -4,7 +4,7 @@
 
 // External dependencies (SillyTavern)
 import { getContext, extension_settings, renderExtensionTemplateAsync } from '../../../../../extensions.js';
-import { chat, eventSource, event_types, saveChatConditional, addOneMessage } from '../../../../../../script.js';
+import { chat, eventSource, event_types, saveChatConditional, addOneMessage, saveSettingsDebounced } from '../../../../../../script.js';
 
 const extensionName = 'GuidedGenerations-Extension';
 
@@ -111,6 +111,7 @@ export {
     updateSettingsUI,
     addSettingsEventListeners,
     defaultSettings,
+    saveSettingsDebounced,
     debugProfileSystem,
     isGroupChat,
     setPreviousImpersonateInput,
