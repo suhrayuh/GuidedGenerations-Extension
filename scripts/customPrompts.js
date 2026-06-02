@@ -111,7 +111,7 @@ async function executeCustomImpersonate(prompt) {
         await switchFn();
 
         // Call Generate directly to pass skipWIAN
-        const { Generate } = await import('../../../../script.js');
+        const { Generate } = await import('../../../../../script.js');
         await Generate('impersonate', {
             quiet_prompt: filledPrompt,
             quietToLoud: true,
