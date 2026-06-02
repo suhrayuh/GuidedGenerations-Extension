@@ -47,6 +47,7 @@ export function addCustomPrompt(overrides = {}) {
         role: '',
         connectionProfile: '',
         preset: '',
+        skipWorldInfo: false,
         ...overrides,
     };
     prompts.push(newPrompt);
@@ -105,12 +106,18 @@ async function executeCustomImpersonate(prompt) {
     const { switch: switchFn, restore } = await handleSwitching(profileValue, presetValue, originalProfile);
 
     const filledPrompt = (prompt.prompt || '').replace('{{input}}', currentInput);
-    const stscript = `/impersonate await=true ${filledPrompt} |`;
 
     try {
-        const context = getContext();
         await switchFn();
-        await context.executeSlashCommandsWithOptions(stscript);
+
+        // Call Generate directly to pass skipWIAN
+        const { Generate } = await import('../../../../script.js');
+        await Generate('impersonate', {
+            quiet_prompt: filledPrompt,
+            quietToLoud: true,
+            skipWIAN: prompt.skipWorldInfo ?? false,
+        });
+
         setLastImpersonateResult(textarea.value);
         await restore();
     } catch (error) {
@@ -290,16 +297,27 @@ export async function executeCustomPrompt(id) {
 
 // ─── Button rendering ───────────────────────────────────────────
 
+const typeColorMap = {
+    'impersonate': 'drawerImpersonateColor',
+    'guided-response': 'drawerResponseColor',
+    'guided-swipe': 'drawerSwipeColor',
+    'guided-continue': 'drawerContinueColor',
+};
+
 export function renderCustomPromptButtons() {
     const prompts = getCustomPrompts().filter(p => p.enabled);
+    const settings = extension_settings[extensionName] || {};
     const fragment = document.createDocumentFragment();
 
     for (const prompt of prompts) {
+        const colorKey = typeColorMap[prompt.type];
+        const color = colorKey ? (settings[colorKey] || '') : '';
+
         const btn = document.createElement('div');
         btn.className = 'gg-action-button interactable';
         btn.title = prompt.name;
         btn.setAttribute('data-custom-prompt-id', prompt.id);
-        btn.innerHTML = `<i class="${prompt.icon || 'fa-solid fa-star'}"></i>`;
+        btn.innerHTML = `<i class="${prompt.icon || 'fa-solid fa-star'}" ${color ? `style="color: ${color}"` : ''}></i>`;
         btn.addEventListener('click', () => executeCustomPrompt(prompt.id));
         fragment.appendChild(btn);
     }

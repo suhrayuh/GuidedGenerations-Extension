@@ -149,6 +149,10 @@ export const defaultSettings = {
     drawerBorderColor: '#ff69b4',
     drawerAccentColor: '#ffd1e8',
     drawerGlowColor: '#ff1493',
+    drawerImpersonateColor: '#ffd1e8',
+    drawerResponseColor: '#7c6dfa',
+    drawerSwipeColor: '#4da6ff',
+    drawerContinueColor: '#4caf7d',
     drawerPositionTop: '22vh',
     drawerPositionRight: 18,
     drawerCssOverrides: '',
@@ -243,7 +247,7 @@ async function updateSettingsUI() {
     const drawerTextKeys = ['drawerIcon', 'drawerPositionTop'];
     const drawerNumberKeys = ['drawerIconSize', 'drawerBubbleSize', 'drawerPanelWidth', 'drawerButtonSize', 'drawerPositionRight'];
     const drawerTextareaKeys = ['drawerBgGradient', 'drawerCssOverrides'];
-    const drawerColorKeys = ['drawerAccentColor', 'drawerBorderColor', 'drawerGlowColor'];
+    const drawerColorKeys = ['drawerAccentColor', 'drawerBorderColor', 'drawerGlowColor', 'drawerImpersonateColor', 'drawerResponseColor', 'drawerSwipeColor', 'drawerContinueColor'];
 
     [...drawerTextKeys, ...drawerNumberKeys, ...drawerColorKeys].forEach(key => {
         const input = document.getElementById(`gg_${key}`);
@@ -283,6 +287,22 @@ const addSettingsEventListeners = () => {
 };
 
 // ─── Custom Prompts CRUD UI ─────────────────────────────────────
+
+function moveCustomPrompt(id, direction) {
+    const prompts = extension_settings[extensionName]?.customPrompts ?? [];
+    const idx = prompts.findIndex(p => p.id === id);
+    if (idx === -1) return;
+
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= prompts.length) return;
+
+    // Swap
+    [prompts[idx], prompts[newIdx]] = [prompts[newIdx], prompts[idx]];
+    extension_settings[extensionName].customPrompts = prompts;
+
+    renderCustomPromptsList();
+    updateExtensionButtons();
+}
 
 function renderCustomPromptsList() {
     const container = document.getElementById('gg_custom_prompts_list');
@@ -337,7 +357,25 @@ function renderCustomPromptsList() {
             updateExtensionButtons();
         });
 
-        header.append(iconPreview, nameSpan, typeTag, toggle, deleteBtn);
+        const moveUpBtn = document.createElement('i');
+        moveUpBtn.className = 'fa-solid fa-chevron-up interactable';
+        moveUpBtn.style.cssText = 'cursor: pointer; opacity: 0.6; color: var(--SmartThemeBodyColor);';
+        moveUpBtn.title = 'Move up';
+        moveUpBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveCustomPrompt(prompt.id, -1);
+        });
+
+        const moveDownBtn = document.createElement('i');
+        moveDownBtn.className = 'fa-solid fa-chevron-down interactable';
+        moveDownBtn.style.cssText = 'cursor: pointer; opacity: 0.6; color: var(--SmartThemeBodyColor);';
+        moveDownBtn.title = 'Move down';
+        moveDownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveCustomPrompt(prompt.id, 1);
+        });
+
+        header.append(moveUpBtn, moveDownBtn, iconPreview, nameSpan, typeTag, toggle, deleteBtn);
 
         // Expandable details
         const details = document.createElement('div');
@@ -400,14 +438,21 @@ function renderCustomPromptsList() {
                     </select>
                 </div>
             </div>
+            <div class="gg-cp-skipwi-row" style="display: ${prompt.type === 'impersonate' ? 'flex' : 'none'}; align-items: center; gap: 8px; margin-top: 4px;">
+                <input type="checkbox" class="gg-cp-field" data-id="${prompt.id}" data-field="skipWorldInfo" ${prompt.skipWorldInfo ? 'checked' : ''} />
+                <small>Skip World Info activation (faster, no WI entries injected)</small>
+            </div>
         `;
 
-        // Type change: show/hide profile/preset row
+        // Type change: show/hide profile/preset row and skip WI row
         const typeSelect = details.querySelector('.gg-cp-type-select');
         const profilePresetRow = details.querySelector('.gg-cp-profile-preset-row');
-        if (typeSelect && profilePresetRow) {
+        const skipWIRow = details.querySelector('.gg-cp-skipwi-row');
+        if (typeSelect) {
             typeSelect.addEventListener('change', () => {
-                profilePresetRow.style.display = typeSelect.value === 'impersonate' ? 'flex' : 'none';
+                const isImpersonate = typeSelect.value === 'impersonate';
+                if (profilePresetRow) profilePresetRow.style.display = isImpersonate ? 'flex' : 'none';
+                if (skipWIRow) skipWIRow.style.display = isImpersonate ? 'flex' : 'none';
             });
         }
 
@@ -418,7 +463,9 @@ function renderCustomPromptsList() {
             if (!field || !id) return;
 
             let value;
-            if (e.target.type === 'number') {
+            if (e.target.type === 'checkbox') {
+                value = e.target.checked;
+            } else if (e.target.type === 'number') {
                 value = parseInt(e.target.value) || 0;
             } else {
                 value = e.target.value.trim();
