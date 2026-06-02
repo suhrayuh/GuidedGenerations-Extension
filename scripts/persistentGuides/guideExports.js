@@ -4,7 +4,7 @@
 
 // External dependencies (SillyTavern)
 import { getContext, extension_settings, renderExtensionTemplateAsync } from '../../../../../extensions.js';
-import { chat, eventSource, event_types, saveChatConditional, addOneMessage, saveSettingsDebounced } from '../../../../../../script.js';
+import { chat, eventSource, event_types, saveChatConditional, addOneMessage, saveSettingsDebounced, deactivateSendButtons, activateSendButtons, setExternalAbortController, setSendButtonState } from '../../../../../../script.js';
 
 const extensionName = 'GuidedGenerations-Extension';
 
@@ -36,11 +36,22 @@ function isGroupChat() {
     return context && context.groupId && context.groups;
 }
 
+// Optional prompt manager helpers (SillyTavern openai.js)
+async function getOpenAIPromptManagerHelpers() {
+    try {
+        return await import('../../../../../../scripts/openai.js');
+    } catch (error) {
+        debugWarn(`[${extensionName}] Failed to load openai prompt manager helpers:`, error);
+        return null;
+    }
+}
+
 // Settings management functions
 import { loadSettings, updateSettingsUI, addSettingsEventListeners, getDebugMessages, clearDebugMessages, getDebugMessagesAsText, debugProfileSystem, defaultSettings } from '../../index.js';
 
 // Utility functions
 import { handleSwitching, getProfileApiType, getPresetsForApiType, getCurrentProfile, getProfileList, switchToProfile, switchToPreset, withProfile, getConnectApiMap, initializeEventListeners, extractApiIdFromApiType } from '../utils/presetUtils.js';
+import { requestCompletion, shouldUseDirectCall } from '../utils/llmClient.js';
 
 // Tool functions
 import editIntros from '../tools/editIntros.js';
@@ -72,6 +83,10 @@ export {
     event_types,
     saveChatConditional,
     addOneMessage,
+    deactivateSendButtons,
+    activateSendButtons,
+    setExternalAbortController,
+    setSendButtonState,
     renderExtensionTemplateAsync,
 
     // Utility functions
@@ -86,6 +101,8 @@ export {
     getConnectApiMap,
     initializeEventListeners,
     extractApiIdFromApiType,
+    requestCompletion,
+    shouldUseDirectCall,
 
     // Tools
     clearInput,
@@ -123,4 +140,5 @@ export {
     getDebugMessages,
     clearDebugMessages,
     getDebugMessagesAsText,
+    getOpenAIPromptManagerHelpers,
 };

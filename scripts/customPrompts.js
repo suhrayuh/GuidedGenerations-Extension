@@ -13,7 +13,8 @@ import {
     getLastImpersonateResult,
     setLastImpersonateResult,
     debugLog,
-    handleSwitching,
+    requestCompletion,
+    shouldUseDirectCall,
     saveSettingsDebounced,
 } from './persistentGuides/guideExports.js';
 
@@ -47,7 +48,6 @@ export function addCustomPrompt(overrides = {}) {
         role: '',
         connectionProfile: '',
         preset: '',
-        skipWorldInfo: false,
         ...overrides,
     };
     prompts.push(newPrompt);
@@ -76,6 +76,58 @@ export function getCustomPromptById(id) {
     return getCustomPrompts().find(p => p.id === id) ?? null;
 }
 
+let regexModuleCache = false;
+
+async function loadRegexModule() {
+    if (regexModuleCache !== false) return regexModuleCache;
+    try {
+        regexModuleCache = await import('/scripts/extensions/regex/engine.js');
+    } catch (_) {
+        regexModuleCache = null;
+    }
+    return regexModuleCache;
+}
+
+async function applyRegex(text, placementName, depth) {
+    if (typeof text !== 'string' || !text) return text;
+    try {
+        const mod = await loadRegexModule();
+        if (!mod?.getRegexedString) return text;
+        const placement = mod.regex_placement?.[placementName];
+        if (placement === undefined) return text;
+        const params = { isPrompt: true };
+        if (typeof depth === 'number') params.depth = depth;
+        const result = mod.getRegexedString(text, placement, params);
+        const resolved = result instanceof Promise ? await result : result;
+        return typeof resolved === 'string' ? resolved : text;
+    } catch (_) {
+        return text;
+    }
+}
+
+async function applyRegexToChatContextIfEnabled(chat, enabled) {
+    if (!enabled || !Array.isArray(chat)) return chat;
+
+    const result = [];
+    for (const message of chat) {
+        if (!message || typeof message !== 'object') {
+            result.push(message);
+            continue;
+        }
+
+        if (typeof message.mes !== 'string' || !message.mes) {
+            result.push({ ...message });
+            continue;
+        }
+
+        const placementName = message.is_user ? 'USER_INPUT' : 'AI_OUTPUT';
+        const mes = await applyRegex(message.mes, placementName);
+        result.push({ ...message, mes });
+    }
+
+    return result;
+}
+
 // ─── Execution logic ────────────────────────────────────────────
 
 async function executeCustomImpersonate(prompt) {
@@ -94,36 +146,60 @@ async function executeCustomImpersonate(prompt) {
 
     setPreviousImpersonateInput(currentInput);
 
-    // Capture original profile before switching
-    let originalProfile = '';
-    try {
-        const { getCurrentProfile } = await import('./persistentGuides/guideExports.js');
-        originalProfile = await getCurrentProfile();
-    } catch (_) { /* ignore */ }
-
     const profileValue = prompt.connectionProfile || '';
     const presetValue = prompt.preset || '';
-    const { switch: switchFn, restore } = await handleSwitching(profileValue, presetValue, originalProfile);
-
     const filledPrompt = (prompt.prompt || '').replace('{{input}}', currentInput);
 
     try {
-        await switchFn();
+        const useDirectCall = await shouldUseDirectCall(profileValue, presetValue);
+        if (useDirectCall) {
+            debugLog(`[CustomImpersonate] Using direct completion for "${prompt.name}"...`);
+            const context = getContext();
+            const extensionPrompts = { ...(context?.extensionPrompts || {}) };
+            const regexEnabled = Boolean(extension_settings[extensionName]?.customImpersonateApplyRegex);
+            const regexedChat = await applyRegexToChatContextIfEnabled(context?.chat || [], regexEnabled);
 
-        // Call Generate directly to pass skipWIAN
-        const { Generate } = await import('../../../../../script.js');
-        await Generate('impersonate', {
-            quiet_prompt: filledPrompt,
-            quietToLoud: true,
-            skipWIAN: prompt.skipWorldInfo ?? false,
-        });
+            // Prevent stale guided-response injections from leaking into direct
+            // impersonation requests. Keep normal/contextual outlet prompts intact.
+            delete extensionPrompts.script_inject_instruct;
+            delete extensionPrompts.QUIET_PROMPT;
+            delete extensionPrompts.DEPTH_PROMPT;
 
-        setLastImpersonateResult(textarea.value);
-        await restore();
+            const completion = await requestCompletion({
+                profileName: profileValue,
+                presetName: presetValue,
+                prompt: filledPrompt,
+                messages: regexedChat,
+                contextOverrides: {
+                    extensionPrompts,
+                    quietPrompt: '',
+                },
+                debugLabel: `custom-impersonate:${prompt.name}`,
+            });
+
+            if (completion && completion.trim() !== '') {
+                textarea.value = completion;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                setLastImpersonateResult(completion);
+                debugLog(`[CustomImpersonate] Completion received for "${prompt.name}".`);
+            } else {
+                debugLog(`[CustomImpersonate] Empty completion for "${prompt.name}".`);
+            }
+        } else {
+            // Fallback to /impersonate slash command (same profile/preset as current)
+            const context = getContext();
+            if (typeof context.executeSlashCommandsWithOptions === 'function') {
+                const stscriptCommand = `/impersonate await=true ${filledPrompt} |`;
+                await context.executeSlashCommandsWithOptions(stscriptCommand);
+                setLastImpersonateResult(textarea.value);
+                debugLog(`[CustomImpersonate] Slash command completed for "${prompt.name}".`);
+            } else {
+                console.error('[GuidedGenerations] context.executeSlashCommandsWithOptions not found!');
+            }
+        }
     } catch (error) {
         console.error(`[GuidedGenerations][CustomImpersonate] Error:`, error);
         setLastImpersonateResult('');
-        await restore();
     }
 }
 

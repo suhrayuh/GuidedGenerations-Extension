@@ -157,6 +157,7 @@ export const defaultSettings = {
     drawerPositionRight: 18,
     drawerCssOverrides: '',
     drawerResetCommand: true,
+    customImpersonateApplyRegex: false,
     customPrompts: [],
     LastPatchNoteVersion: '2.0.0',
 };
@@ -438,21 +439,15 @@ function renderCustomPromptsList() {
                     </select>
                 </div>
             </div>
-            <div class="gg-cp-skipwi-row" style="display: ${prompt.type === 'impersonate' ? 'flex' : 'none'}; align-items: center; gap: 8px; margin-top: 4px;">
-                <input type="checkbox" class="gg-cp-field" data-id="${prompt.id}" data-field="skipWorldInfo" ${prompt.skipWorldInfo ? 'checked' : ''} />
-                <small>Skip World Info activation (faster, no WI entries injected)</small>
-            </div>
         `;
 
-        // Type change: show/hide profile/preset row and skip WI row
+        // Type change: show/hide profile/preset row
         const typeSelect = details.querySelector('.gg-cp-type-select');
         const profilePresetRow = details.querySelector('.gg-cp-profile-preset-row');
-        const skipWIRow = details.querySelector('.gg-cp-skipwi-row');
         if (typeSelect) {
             typeSelect.addEventListener('change', () => {
                 const isImpersonate = typeSelect.value === 'impersonate';
                 if (profilePresetRow) profilePresetRow.style.display = isImpersonate ? 'flex' : 'none';
-                if (skipWIRow) skipWIRow.style.display = isImpersonate ? 'flex' : 'none';
             });
         }
 
