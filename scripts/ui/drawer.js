@@ -85,8 +85,8 @@ export function createDrawer() {
     };
 
     const updatePanelDirection = () => {
-        const rect = drawerRoot.getBoundingClientRect();
-        const toggleCenterY = rect.top + (rect.height / 2);
+        const toggleRect = drawerToggle.getBoundingClientRect();
+        const toggleCenterY = toggleRect.top + (toggleRect.height / 2);
         const screenMidpoint = window.innerHeight / 2;
         
         if (toggleCenterY < screenMidpoint) {
@@ -104,7 +104,6 @@ export function createDrawer() {
         drawerRoot.style.top = `${pos.top}px`;
         drawerRoot.style.right = 'auto';
         drawerRoot.style.transform = 'none';
-        updatePanelDirection();
     };
 
     const persistPosition = () => {
@@ -166,6 +165,7 @@ export function createDrawer() {
         e.preventDefault();
         e.stopPropagation();
         if (suppressClick) return;
+        updatePanelDirection();
         const isOpen = drawerRoot.classList.toggle('is-open');
         drawerToggle.setAttribute('aria-expanded', String(isOpen));
     });
@@ -175,6 +175,8 @@ export function createDrawer() {
         if (!drawerRoot.classList.contains('is-open')) return;
         if (drawerRoot.contains(e.target)) return;
         drawerRoot.classList.remove('is-open');
+        drawerRoot.classList.remove('gg-drawer-up');
+        drawerRoot.classList.remove('gg-drawer-down');
         drawerToggle.setAttribute('aria-expanded', 'false');
     });
 
@@ -183,11 +185,9 @@ export function createDrawer() {
         const rect = drawerRoot.getBoundingClientRect();
         setPosition(rect.left, rect.top);
         persistPosition();
-        updatePanelDirection();
     });
 
     restorePosition();
-    updatePanelDirection();
     applyDrawerTheme(settings);
 }
 
@@ -345,19 +345,6 @@ function getDrawerCSS() {
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-/* Upward direction: panel above toggle (default) */
-#st-side-drawer.gg-drawer-up {
-    flex-direction: column;
-}
-
-/* Downward direction: reverse order so panel appears below toggle */
-#st-side-drawer.gg-drawer-down {
-    flex-direction: column-reverse;
 }
 
 #st-side-drawer-toggle,
@@ -415,9 +402,11 @@ function getDrawerCSS() {
 /* ── Panel ── */
 
 #st-side-drawer-panel {
+    position: absolute;
     width: var(--gg-drawer-panel-width);
     max-height: min(68vh, 560px);
-    margin-left: calc((var(--gg-drawer-bubble-size) - var(--gg-drawer-panel-width)) / 2);
+    left: 50%;
+    margin-left: calc((var(--gg-drawer-panel-width) - var(--gg-drawer-bubble-size)) / -2);
     border-radius: 999px;
     border: 1px solid var(--gg-drawer-border);
     background: var(--gg-drawer-bg);
@@ -432,11 +421,11 @@ function getDrawerCSS() {
     box-sizing: border-box;
 }
 
-/* Default: panel opens above toggle (upward) */
+/* Upward: panel above toggle */
 #st-side-drawer.gg-drawer-up #st-side-drawer-panel {
-    margin-bottom: 10px;
+    bottom: calc(100% + 10px);
     transform-origin: bottom center;
-    transform: translateY(-10px) scale(0.96);
+    transform: translateY(10px) scale(0.96);
 }
 
 #st-side-drawer.gg-drawer-up.is-open #st-side-drawer-panel {
@@ -445,11 +434,11 @@ function getDrawerCSS() {
     visibility: visible;
 }
 
-/* Panel opens below toggle (downward) */
+/* Downward: panel below toggle */
 #st-side-drawer.gg-drawer-down #st-side-drawer-panel {
-    margin-top: 10px;
+    top: calc(100% + 10px);
     transform-origin: top center;
-    transform: translateY(10px) scale(0.96);
+    transform: translateY(-10px) scale(0.96);
 }
 
 #st-side-drawer.gg-drawer-down.is-open #st-side-drawer-panel {
@@ -458,11 +447,11 @@ function getDrawerCSS() {
     visibility: visible;
 }
 
-/* Default to upward if no direction class */
+/* Default: upward if no direction class */
 #st-side-drawer:not(.gg-drawer-up):not(.gg-drawer-down) #st-side-drawer-panel {
-    margin-bottom: 10px;
+    bottom: calc(100% + 10px);
     transform-origin: bottom center;
-    transform: translateY(-10px) scale(0.96);
+    transform: translateY(10px) scale(0.96);
 }
 
 #st-side-drawer:not(.gg-drawer-up):not(.gg-drawer-down).is-open #st-side-drawer-panel {
