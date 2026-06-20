@@ -84,12 +84,27 @@ export function createDrawer() {
         };
     };
 
+    const updatePanelDirection = () => {
+        const rect = drawerRoot.getBoundingClientRect();
+        const toggleCenterY = rect.top + (rect.height / 2);
+        const screenMidpoint = window.innerHeight / 2;
+        
+        if (toggleCenterY < screenMidpoint) {
+            drawerRoot.classList.add('gg-drawer-down');
+            drawerRoot.classList.remove('gg-drawer-up');
+        } else {
+            drawerRoot.classList.add('gg-drawer-up');
+            drawerRoot.classList.remove('gg-drawer-down');
+        }
+    };
+
     const setPosition = (left, top) => {
         const pos = clamp(left, top);
         drawerRoot.style.left = `${pos.left}px`;
         drawerRoot.style.top = `${pos.top}px`;
         drawerRoot.style.right = 'auto';
         drawerRoot.style.transform = 'none';
+        updatePanelDirection();
     };
 
     const persistPosition = () => {
@@ -168,9 +183,11 @@ export function createDrawer() {
         const rect = drawerRoot.getBoundingClientRect();
         setPosition(rect.left, rect.top);
         persistPosition();
+        updatePanelDirection();
     });
 
     restorePosition();
+    updatePanelDirection();
     applyDrawerTheme(settings);
 }
 
@@ -328,6 +345,19 @@ function getDrawerCSS() {
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Upward direction: panel above toggle (default) */
+#st-side-drawer.gg-drawer-up {
+    flex-direction: column;
+}
+
+/* Downward direction: reverse order so panel appears below toggle */
+#st-side-drawer.gg-drawer-down {
+    flex-direction: column-reverse;
 }
 
 #st-side-drawer-toggle,
@@ -387,7 +417,6 @@ function getDrawerCSS() {
 #st-side-drawer-panel {
     width: var(--gg-drawer-panel-width);
     max-height: min(68vh, 560px);
-    margin-top: 10px;
     margin-left: calc((var(--gg-drawer-bubble-size) - var(--gg-drawer-panel-width)) / 2);
     border-radius: 999px;
     border: 1px solid var(--gg-drawer-border);
@@ -397,15 +426,46 @@ function getDrawerCSS() {
     -webkit-backdrop-filter: blur(10px);
     padding: 12px 10px 12px 12px;
     opacity: 0;
-    transform: translateY(-10px) scale(0.96);
-    transform-origin: top center;
     transition: transform 0.22s ease, opacity 0.22s ease;
     overflow: hidden;
     visibility: hidden;
     box-sizing: border-box;
 }
 
-#st-side-drawer.is-open #st-side-drawer-panel {
+/* Default: panel opens above toggle (upward) */
+#st-side-drawer.gg-drawer-up #st-side-drawer-panel {
+    margin-bottom: 10px;
+    transform-origin: bottom center;
+    transform: translateY(-10px) scale(0.96);
+}
+
+#st-side-drawer.gg-drawer-up.is-open #st-side-drawer-panel {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    visibility: visible;
+}
+
+/* Panel opens below toggle (downward) */
+#st-side-drawer.gg-drawer-down #st-side-drawer-panel {
+    margin-top: 10px;
+    transform-origin: top center;
+    transform: translateY(10px) scale(0.96);
+}
+
+#st-side-drawer.gg-drawer-down.is-open #st-side-drawer-panel {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    visibility: visible;
+}
+
+/* Default to upward if no direction class */
+#st-side-drawer:not(.gg-drawer-up):not(.gg-drawer-down) #st-side-drawer-panel {
+    margin-bottom: 10px;
+    transform-origin: bottom center;
+    transform: translateY(-10px) scale(0.96);
+}
+
+#st-side-drawer:not(.gg-drawer-up):not(.gg-drawer-down).is-open #st-side-drawer-panel {
     opacity: 1;
     transform: translateY(0) scale(1);
     visibility: visible;
