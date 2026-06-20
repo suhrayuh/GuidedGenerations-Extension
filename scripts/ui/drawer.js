@@ -406,7 +406,7 @@ function getDrawerCSS() {
     width: var(--gg-drawer-panel-width);
     max-height: min(68vh, 560px);
     left: 50%;
-    margin-left: calc((var(--gg-drawer-panel-width) - var(--gg-drawer-bubble-size)) / -2);
+    margin-left: calc(var(--gg-drawer-panel-width) / -2);
     border-radius: 999px;
     border: 1px solid var(--gg-drawer-border);
     background: var(--gg-drawer-bg);
