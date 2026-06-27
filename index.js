@@ -12,7 +12,7 @@ import { getContext, extension_settings, renderExtensionTemplateAsync } from '..
 import { getPresetManager } from '../../../../scripts/preset-manager.js';
 import { loadSettingsPanel } from './scripts/settingsPanel.js';
 import { getProfileList } from './scripts/persistentGuides/guideExports.js';
-import { initDrawer, teardownDrawer, isDrawerActive, applyDrawerTheme } from './scripts/ui/drawer.js';
+import { initDrawer, teardownDrawer, isDrawerActive, applyDrawerTheme, injectDrawerCSS } from './scripts/ui/drawer.js';
 import { addCustomPrompt, updateCustomPrompt, deleteCustomPrompt, executeCustomPrompt, renderCustomPromptButtons } from './scripts/customPrompts.js';
 
 export const extensionName = 'GuidedGenerations-Extension';
@@ -139,6 +139,7 @@ export const defaultSettings = {
     depthPromptGuidedSwipe: 0,
     // Drawer settings
     enableDrawer: false,
+    displayMode: 'input',
     drawerIcon: 'fa-solid fa-heart',
     drawerIconSize: 1.15,
     drawerBubbleSize: 58,
@@ -263,6 +264,11 @@ async function updateSettingsUI() {
             textarea.value = extension_settings[extensionName][key] ?? defaultSettings[key] ?? '';
         }
     });
+
+    // Re-apply floating settings visibility after panel is populated
+    if (window._ggUpdateFloatingVisibility) {
+        window._ggUpdateFloatingVisibility();
+    }
 }
 
 const addSettingsEventListeners = () => {
@@ -271,6 +277,41 @@ const addSettingsEventListeners = () => {
     if (settingsContainer) {
         settingsContainer.removeEventListener('change', handleSettingsChangeDelegated);
         settingsContainer.addEventListener('change', handleSettingsChangeDelegated);
+    }
+
+    // Display mode dropdown
+    const $displayMode = $('#gg_displayMode');
+    if ($displayMode.length) {
+        // Hide TopInfoBar option if not installed
+        const hasTopBar = !!document.getElementById('extensionTopBar');
+        $displayMode.find('option[value="topbar"]').toggle(hasTopBar);
+
+        $displayMode.val(extension_settings[extensionName]?.displayMode || 'input');
+        $displayMode.off('change').on('change', function () {
+            extension_settings[extensionName].displayMode = $(this).val();
+            saveSettingsDebounced();
+            updateExtensionButtons();
+            window._ggUpdateFloatingVisibility();
+        });
+
+        // Show/hide floating drawer settings based on mode
+        window._ggUpdateFloatingVisibility = () => {
+            const mode = $displayMode.val() || 'input';
+            // Hide all floating drawer settings + custom prompt colors when not in floating mode
+            const drawerHeader = $('h4:contains("Floating Drawer")');
+            const drawerHeaderEl = drawerHeader.length ? drawerHeader[0] : null;
+            if (drawerHeaderEl) {
+                let el = drawerHeaderEl.nextElementSibling;
+                while (el) {
+                    // Only stop at the next H4 section header (Injection Settings, etc.)
+                    if (el.tagName === 'H4') break;
+                    el.style.display = mode === 'floating' ? '' : 'none';
+                    el = el.nextElementSibling;
+                }
+                drawerHeaderEl.style.display = mode === 'floating' ? '' : 'none';
+            }
+        };
+        window._ggUpdateFloatingVisibility();
     }
 
     // Add Custom Prompt button
@@ -868,12 +909,29 @@ function updateExtensionButtons() {
 
     integrateQRBar();
 
-    // Drawer mode: move buttons into floating drawer, or restore to input box
-    if (settings.enableDrawer) {
+    // Display mode: input (default), floating drawer, or TopInfoBar icon
+    const mode = settings.displayMode || 'input';
+    const topBarIcon = document.getElementById('gg-topbar-icon');
+    if (topBarIcon) topBarIcon.style.display = mode === 'topbar' ? '' : 'none';
+
+    // Hide input-area buttons + QR bar when using topbar mode
+    if (buttonContainer) {
+        buttonContainer.style.display = mode === 'topbar' ? 'none' : '';
+    }
+    const qrBar = document.getElementById('qr--bar');
+    if (qrBar) {
+        qrBar.style.display = mode === 'topbar' ? 'none' : '';
+    }
+
+    if (mode === 'floating') {
         initDrawer(settings);
     } else if (isDrawerActive()) {
         teardownDrawer();
     }
+
+    // Add breathing room to input area when buttons are moved out
+    injectDrawerCSS();
+    document.body.classList.toggle('gg-drawer-active', mode === 'floating' || mode === 'topbar');
 }
 
 // QR Bar integration
@@ -884,6 +942,11 @@ function integrateQRBar() {
     if (!qrBar || !qrContainer) return false;
     const currentSettings = extension_settings[extensionName];
     if (!currentSettings) return false;
+
+    // Respect display mode — hide QR bar when using TopInfoBar
+    const mode = currentSettings.displayMode || 'input';
+    qrBar.style.display = mode === 'topbar' ? 'none' : '';
+
     if (currentSettings.integrateQrBar) {
         if (qrBar.parentElement !== qrContainer) {
             try { qrContainer.appendChild(qrBar); } catch (error) { return false; }
@@ -1009,6 +1072,176 @@ async function setup() {
 // Exports for settingsPanel.js
 export { loadSettings, updateSettingsUI, addSettingsEventListeners };
 
+// ─── TopInfoBar Integration ─────────────────────────────────────
+
+let ggTopBarPanel = null;
+
+function createGGButtonPanel() {
+    if (ggTopBarPanel) return ggTopBarPanel;
+
+    const panel = document.createElement('div');
+    panel.id = 'gg-topbar-panel';
+    panel.style.cssText = 'display:none; position:fixed; z-index:9999; background:var(--SmartThemeBlurTintColor,rgba(0,0,0,0.9)); border:1px solid var(--SmartThemeBorderColor,rgba(128,128,128,0.3)); border-radius:8px; padding:8px; max-height:70vh; overflow-y:auto; min-width:220px; box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:4px 8px 8px; border-bottom:1px solid var(--SmartThemeBorderColor,rgba(128,128,128,0.2)); margin-bottom:6px;';
+    header.innerHTML = '<strong style="font-size:13px;">Guided Generations</strong>';
+
+    const closeBtn = document.createElement('i');
+    closeBtn.className = 'fa-solid fa-times interactable';
+    closeBtn.style.cssText = 'cursor:pointer; opacity:0.6;';
+    closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    const list = document.createElement('div');
+    list.id = 'gg-topbar-button-list';
+    panel.appendChild(list);
+
+    document.body.appendChild(panel);
+    ggTopBarPanel = panel;
+    return panel;
+}
+
+function refreshGGButtonPanel() {
+    const list = document.getElementById('gg-topbar-button-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+    const settings = extension_settings[extensionName];
+    if (!settings) return;
+
+    const buttons = [];
+
+    // Built-in GG buttons (same as updateExtensionButtons)
+    if (settings.showSimpleSendButton) {
+        buttons.push({ icon: 'fa-solid fa-paper-plane', name: 'Simple Send', action: simpleSend });
+    }
+    if (settings.showRecoverInputButton) {
+        buttons.push({ icon: 'fa-solid fa-arrow-rotate-left', name: 'Recover Input', action: recoverInput });
+    }
+    if (settings.showEditIntrosButton) {
+        buttons.push({ icon: 'fa-solid fa-user-edit', name: 'Edit Intros', action: async () => {
+            const editIntros = await import('./scripts/tools/editIntros.js');
+            await editIntros.default();
+        }});
+    }
+    if (settings.showClearInputButton) {
+        buttons.push({ icon: 'fa-solid fa-trash', name: 'Clear Input', action: async () => {
+            const clearInput = await import('./scripts/tools/clearInput.js');
+            await clearInput.default();
+        }});
+    }
+    if (settings.showImpersonate1stPerson) {
+        buttons.push({ icon: 'fa-solid fa-user', name: 'Impersonate (1st)', action: guidedImpersonate });
+    }
+    if (settings.showImpersonate2ndPerson) {
+        buttons.push({ icon: 'fa-solid fa-user-group', name: 'Impersonate (2nd)', action: guidedImpersonate2nd });
+    }
+    if (settings.showImpersonate3rdPerson) {
+        buttons.push({ icon: 'fa-solid fa-users', name: 'Impersonate (3rd)', action: guidedImpersonate3rd });
+    }
+    if (settings.showGuidedSwipe) {
+        buttons.push({ icon: 'fa-solid fa-forward', name: 'Guided Swipe', action: guidedSwipe });
+    }
+    if (settings.showGuidedResponse) {
+        buttons.push({ icon: 'fa-solid fa-dog', name: 'Guided Response', action: guidedResponse });
+    }
+    if (settings.showGuidedContinue) {
+        buttons.push({ icon: 'fa-solid fa-arrow-right', name: 'Guided Continue', action: guidedContinue });
+    }
+    if (settings.showUndoButton) {
+        buttons.push({ icon: 'fa-solid fa-rotate-left', name: 'Undo Last Addition', action: undoLastGuidedAddition });
+    }
+    if (settings.showRevertButton) {
+        buttons.push({ icon: 'fa-solid fa-history', name: 'Revert to Original', action: revertToOriginalGuidedContinue });
+    }
+
+    // Custom prompts
+    const customPrompts = (settings.customPrompts || []).filter(p => p.enabled);
+    for (const prompt of customPrompts) {
+        buttons.push({
+            icon: prompt.icon || 'fa-solid fa-star',
+            name: prompt.name || 'Untitled',
+            action: () => executeCustomPrompt(prompt.id),
+        });
+    }
+
+    // QR buttons
+    const qrBar = document.getElementById('qr--bar');
+    if (qrBar) {
+        const qrButtons = qrBar.querySelectorAll('.qr--button');
+        qrButtons.forEach(qrBtn => {
+            const iconEl = qrBtn.querySelector('.qr--button-icon');
+            const labelEl = qrBtn.querySelector('.qr--button-label');
+            const icon = iconEl ? (iconEl.className || 'fa-solid fa-bolt') : 'fa-solid fa-bolt';
+            const name = labelEl ? labelEl.textContent.trim() : 'QR Button';
+            buttons.push({
+                icon: icon,
+                name: name,
+                action: () => qrBtn.click(),
+            });
+        });
+    }
+
+    for (const btn of buttons) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:6px 8px; cursor:pointer; border-radius:4px; transition:background 0.15s;';
+        row.addEventListener('mouseenter', () => { row.style.background = 'var(--SmartThemeButtonHover,rgba(128,128,128,0.15))'; });
+        row.addEventListener('mouseleave', () => { row.style.background = ''; });
+        row.addEventListener('click', () => {
+            btn.action();
+            if (ggTopBarPanel) ggTopBarPanel.style.display = 'none';
+        });
+
+        const icon = document.createElement('i');
+        icon.className = btn.icon + ' fa-fw';
+        icon.style.cssText = 'width:18px; text-align:center; opacity:0.7;';
+
+        const name = document.createElement('span');
+        name.textContent = btn.name;
+        name.style.cssText = 'font-size:13px;';
+
+        row.appendChild(icon);
+        row.appendChild(name);
+        list.appendChild(row);
+    }
+
+    if (buttons.length === 0) {
+        list.innerHTML = '<div style="padding:8px; opacity:0.5; font-size:12px;">No buttons enabled. Check GG settings.</div>';
+    }
+}
+
+function injectTopInfoBarIcon() {
+    const topBar = document.getElementById('extensionTopBar');
+    if (!topBar) return;
+
+    const chatName = document.getElementById('extensionTopBarChatName');
+    const existing = document.getElementById('gg-topbar-icon');
+    if (existing) return;
+
+    const settings = extension_settings[extensionName] || {};
+    const iconClass = settings.drawerIcon || 'fa-solid fa-heart';
+
+    const icon = document.createElement('i');
+    icon.id = 'gg-topbar-icon';
+    icon.className = `fa-fw ${iconClass} right_menu_button`;
+    icon.title = 'Guided Generations';
+    icon.tabIndex = 0;
+    icon.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const panel = createGGButtonPanel();
+        refreshGGButtonPanel();
+        const iconRect = icon.getBoundingClientRect();
+        panel.style.left = Math.min(iconRect.left, window.innerWidth - 240) + 'px';
+        panel.style.top = (iconRect.bottom + 4) + 'px';
+        panel.style.display = panel.style.display === 'none' ? '' : 'none';
+    });
+
+    topBar.insertBefore(icon, chatName);
+}
+
 // Expose to global scope
 window.GuidedGenerations = {
     simpleSend,
@@ -1031,6 +1264,10 @@ $(document).ready(async function () {
         if (sendForm) observer.observe(sendForm, { childList: true, subtree: true });
     }, 2000);
     checkVersionAndNotify();
+
+    // Inject TopInfoBar icon
+    injectTopInfoBarIcon();
+    setTimeout(() => injectTopInfoBarIcon(), 2000);
 });
 
 export async function debugProfileSystem() {
